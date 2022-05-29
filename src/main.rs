@@ -1,25 +1,26 @@
 
-#[derive(Debug)]
-pub enum Equation {
+#[derive(Debug, Clone)]
+pub enum Expression {
     Constant(i64),
     Variable,
-//    Neg(Box<Equation>),
-    Sub(Box<Equation>, Box<Equation>),
-    Add(Box<Equation>, Box<Equation>),
-    Mul(Box<Equation>, Box<Equation>),
-    Div(Box<Equation>, Box<Equation>),
-    Exp(Box<Equation>, Box<Equation>),
-    Sin(Box<Equation>),
-    Cos(Box<Equation>),
-    Tan(Box<Equation>),
-    Log(Box<Equation>),
+//    Neg(Box<Expression>),
+    Sub(Box<Expression>, Box<Expression>),
+    Add(Box<Expression>, Box<Expression>),
+    Mul(Box<Expression>, Box<Expression>),
+    Div(Box<Expression>, Box<Expression>),
+    Exp(Box<Expression>, Box<Expression>),
+    Sin(Box<Expression>),
+    Cos(Box<Expression>),
+    Tan(Box<Expression>),
+    Log(Box<Expression>),
 }
 
 
-use Equation::*;
+use Expression::*;
 use std::fmt;
+use std::ops;
 
-impl fmt::Display for Equation {
+impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Sub(e1, e2) => write!(f, "({}-{})", *e1, *e2),
@@ -33,6 +34,69 @@ impl fmt::Display for Equation {
             Log(e)      => write!(f, "log({})", *e),
             Constant(num) => write!(f, "{}", num),
             Variable    => write!(f, "x")
+        }
+    }
+}
+
+impl ops::Add for Expression {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Add(Box::new(self), Box::new(other))
+    }
+}
+
+impl ops::Sub for Expression {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        Sub(Box::new(self), Box::new(other))
+    }
+}
+
+impl ops::Mul for Expression {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self {
+        Mul(Box::new(self), Box::new(other))
+    }
+}
+
+impl ops::Div for Expression {
+    type Output = Self;
+
+    fn div(self, other: Self) -> Self {
+        Div(Box::new(self), Box::new(other))
+    }
+}
+
+impl ops::BitXor for Expression {
+    type Output = Self;
+
+    fn bitxor(self, other: Self) -> Self {
+        Exp(Box::new(self), Box::new(other))
+    }
+}
+
+impl Expression {
+    fn df(self) -> Self {
+        match self {
+            Variable    => Constant(1),
+            Constant(_) => Constant(0),
+            Sin(e)      => Cos(e.clone()) * (*e).df(),
+            Cos(e)      => (Constant(0) - Sin(e.clone())) * (*e).df(),
+            Tan(e)      => (Sin(e.clone())/Cos(e)).df(),
+            Log(e)      => (Constant(1)/(*e.clone())) * (*e).df(),
+            Sub(e1, e2) => (*e1).df() - (*e2).df(),
+            Add(e1, e2) => (*e1).df() + (*e2).df(),
+            Mul(e1, e2) => (*e1.clone()) * (*e2.clone()).df() + (*e2) * (*e1).df(),
+            Div(e1, e2) => ((*e2.clone()) * (*e1.clone()).df() - (*e1) * (*e2.clone()).df()) / ((*e2.clone())*(*e2)),
+            Exp(e1, e2) => match (*e1, *e2) {
+                (Constant(_), Constant(_)) => Constant(0),
+                (Constant(n), e)           => (Constant(n)^e.clone())*Log(Box::new(e.clone()))*e.df(),
+                (e,           Constant(n)) => Constant(n)*(e.clone()^Constant(n-1))*e.df(),
+                _                          => panic!("Net yet... Not yet."),
+            }
         }
     }
 }
@@ -109,7 +173,7 @@ fn to_postfix(tokens: Vec<String>) -> Vec<String> {
     postfix
 }
 
-pub fn parse(exp: &str) -> Equation {
+pub fn parse(exp: &str) -> Expression {
     println!("===========================");
     println!("Expression: {}", exp);
     let tokens = tokenize(exp);
@@ -153,13 +217,17 @@ pub fn parse(exp: &str) -> Equation {
 }
 
 fn main() {
-    let exps = vec!["(1+2)",
-                    "sin(x+(cos(log(e^(x+3234)))))",
-                    "sin(x+cos(3*x))+log(sin(x)*cos(x))",
-                    "x+4*3/5+(sin(10)*log(x+10*3))"];
+    let exps = vec![
+                    "sin(x)*cos(x)",
+//                    "sin(x+(cos(log(4^(x+3234)))))",
+//                    "sin(x+cos(3*x))+log(sin(x)*cos(x))",
+//                    "x+4*3/5+(sin(10)*log(x+10*3))"
+                    ];
     for exp in exps {
         let parsed = parse(exp);
-        println!("{:?}", parsed);
-        println!("{}", parsed);
+        println!("debug f(x)  = {:?}", parsed.clone());
+        println!("debug f'(x) = {:?}", parsed.clone().df());
+        println!("f(x)  = {}", parsed.clone());
+        println!("f'(x) = {}", parsed.df());
     }
 }
