@@ -99,6 +99,113 @@ impl Expression {
             }
         }
     }
+
+    fn dnf(self, n: usize) -> Self {
+        let mut df = self;
+        for i in 0..n {
+            df = df.df().evaluate();
+            println!("{}", i+1);
+        }
+        df
+    }
+
+    fn reducible(self) -> bool {
+        match self {
+            Constant(_) => false,
+            Variable    => false,
+            Sin(e)      => (*e).reducible(),
+            Cos(e)      => (*e).reducible(),
+            Tan(e)      => (*e).reducible(),
+            Log(e)      => (*e).reducible(),
+            Sub(e1, e2) => match (*e1, *e2) {
+                (Constant(0), Constant(0))   => true,
+                (Constant(_), Constant(_))   => true,
+                (_,            Constant(0))  => true,
+                (e1,            e2)          => e1.reducible() || e2.reducible()
+            },
+            Add(e1, e2) => match (*e1, *e2) {
+                (Constant(0),  Constant(0))  => true,
+                (Constant(_), Constant(_))   => true,
+                (Constant(0),  _)            => true,
+                (_,            Constant(0))  => true,
+                (e1,           e2)           => e1.reducible() || e2.reducible()
+            },
+            Mul(e1, e2) => match (*e1, *e2) {
+                (Constant(0), _)             => true,
+                (_, Constant(0))             => true,
+                (Constant(_), Constant(_))   => true,
+                (Constant(1), _)             => true,
+                (_, Constant(1))             => true,
+                (e1, e2)                     => e1.reducible() || e2.reducible(),
+            },
+            Div(e1, e2) => match (*e1, *e2) {
+                (Constant(0), _)             => true,
+                (_, Constant(1))             => true,
+                (Constant(_), Constant(_))   => true,
+                (e1, e2)                     => e1.reducible() || e2.reducible(),
+            },
+            Exp(e1, e2) => match (*e1, *e2) {
+                (Constant(0|1), _)       => true,
+                (_, Constant(0))             => true,
+                (_, Constant(1))             => true,
+                (Constant(_), Constant(_))   => true,
+                (e1, e2)                     => e1.reducible() || e2.reducible(),
+            }
+        }
+    }
+
+    fn reduce(self) -> Self {
+        match self {
+            Constant(n) => Constant(n),
+            Variable    => Variable,
+            Sin(e)      => Sin(Box::new((*e).reduce())),
+            Cos(e)      => Cos(Box::new((*e).reduce())),
+            Tan(e)      => Tan(Box::new((*e).reduce())),
+            Log(e)      => Log(Box::new((*e).reduce())),
+            Sub(e1, e2) => match (*e1, *e2) {
+                (Constant(0), Constant(0))   => Constant(0),
+                (Constant(n1), Constant(n2)) => Constant(n1-n2),
+                (e,            Constant(0))  => e.reduce(),
+                (e1,            e2)          => e1.reduce() - e2.reduce()
+            },
+            Add(e1, e2) => match (*e1, *e2) {
+                (Constant(0),  Constant(0))  => Constant(0),
+                (Constant(n1), Constant(n2)) => Constant(n1+n2),
+                (Constant(0),  e)            => e.reduce(),
+                (e,            Constant(0))  => e.reduce(),
+                (e1,           e2)           => e1.reduce() + e2.reduce()
+            },
+            Mul(e1, e2) => match (*e1, *e2) {
+                (Constant(0), _)             => Constant(0),
+                (_, Constant(0))             => Constant(0),
+                (Constant(n1), Constant(n2)) => Constant(n1*n2),
+                (Constant(1), e)             => e.reduce(),
+                (e, Constant(1))             => e.reduce(),
+                (e1, e2)                     => e1.reduce()*e2.reduce(),
+            },
+            Div(e1, e2) => match (*e1, *e2) {
+                (Constant(0), _)             => Constant(0),
+                (e, Constant(1))             => e.reduce(),
+                (Constant(n1), Constant(n2)) => Constant(n1/n2),
+                (e1, e2)                     => e1.reduce() / e2.reduce(),
+            },
+            Exp(e1, e2) => match (*e1, *e2) {
+                (Constant(n@(0|1)), _)       => Constant(n),
+                (_, Constant(0))             => Constant(1),
+                (e, Constant(1))             => e.reduce(),
+                (Constant(n1), Constant(n2)) => Constant(n1.pow(n2 as u32)),
+                (e1, e2)                     => e1.reduce() ^ e2.reduce(),
+            }
+        }
+    }
+
+    fn evaluate(self) -> Self {
+        let mut f = self;
+        while f.clone().reducible() {
+            f = f.reduce();
+        }
+        f
+    }
 }
 
 fn tokenize(exp: &str) -> Vec<String> {
@@ -174,12 +281,12 @@ fn to_postfix(tokens: Vec<String>) -> Vec<String> {
 }
 
 pub fn parse(exp: &str) -> Expression {
-    println!("===========================");
-    println!("Expression: {}", exp);
+//    println!("===========================");
+//    println!("Expression: {}", exp);
     let tokens = tokenize(exp);
-    println!("Tokens: {:?}", tokens);
+//    println!("Tokens: {:?}", tokens);
     let postfixed_tokens  = to_postfix(tokens);
-    println!("Postfix: {:?}", postfixed_tokens);
+//    println!("Postfix: {:?}", postfixed_tokens);
 
     let mut exp_stack = Vec::new();
     for token in postfixed_tokens.iter() {
@@ -217,17 +324,17 @@ pub fn parse(exp: &str) -> Expression {
 }
 
 fn main() {
-    let exps = vec![
-                    "sin(x)*cos(x)",
-//                    "sin(x+(cos(log(4^(x+3234)))))",
-//                    "sin(x+cos(3*x))+log(sin(x)*cos(x))",
-//                    "x+4*3/5+(sin(10)*log(x+10*3))"
-                    ];
-    for exp in exps {
-        let parsed = parse(exp);
-        println!("debug f(x)  = {:?}", parsed.clone());
-        println!("debug f'(x) = {:?}", parsed.clone().df());
-        println!("f(x)  = {}", parsed.clone());
-        println!("f'(x) = {}", parsed.df());
-    }
+    use std::io::{stdin, stdout, Write};
+    print!("Enter f(x): ");
+    stdout().flush().unwrap();
+    let mut line = String::new();
+    stdin().read_line(&mut line).unwrap();
+    let f = parse(&line);
+
+    print!("Enter number of times you want to differentiate: ");
+    stdout().flush().unwrap();
+    line = String::new();
+    stdin().read_line(&mut line).unwrap();
+    let n = line.trim().parse().unwrap();
+    println!("fn(x) = {}", f.dnf(n))
 }
